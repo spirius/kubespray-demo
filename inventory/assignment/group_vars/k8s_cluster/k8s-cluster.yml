@@ -1,0 +1,14 @@
+---
+kube_version: "1.36.1"
+
+kube_network_plugin: cilium
+kube_proxy_remove: true
+
+# Fix ipv6 DNS related warnings
+upstream_dns_servers:
+  - 185.12.64.1
+  - 185.12.64.2
+resolvconf_mode: host_resolvconf
+
+# Cilium needs root privileges https://github.com/cilium/cilium/issues/23838#issuecomment-2191213296
+kube_owner: root

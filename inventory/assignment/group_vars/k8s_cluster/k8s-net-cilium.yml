@@ -1,0 +1,31 @@
+---
+cilium_version: "1.19.4"
+
+# Enable encrypted, as we run on a public network
+cilium_encryption_enabled: true
+cilium_encryption_type: "wireguard"
+
+# Replace kube-proxy with cilium
+cilium_kube_proxy_replacement: true
+
+# Enable Gateway API
+cilium_gateway_api_enabled: true
+
+cilium_extra_values:
+  # https://docs.cilium.io/en/latest/network/servicemesh/gateway-api/gateway-api/#host-network-mode
+  gatewayAPI:
+    enabled: true
+    hostNetwork:
+      enabled: true
+  envoy:
+    enabled: true
+    securityContext:
+      capabilities:
+        keepCapNetBindService: true
+        envoy:
+          # We need to preserve the original capabilities
+          # https://github.com/cilium/cilium/blob/v1.19.4/install/kubernetes/cilium/values.yaml#L2842
+          - NET_ADMIN
+          - SYS_ADMIN
+          # Extra capability for host network mode for the Envoy proxy
+          - NET_BIND_SERVICE

@@ -1,0 +1,134 @@
+# Bare-Metal Kubernetes Cluster with Cilium
+
+This repository contains the automation scripts for bootstraping a kubernetes cluster with 5 nodes using **kubespray**.
+
+## Design Notes
+
+- This setup uses kubespray for deploying and managing the cluster.
+- It deployes 3 control plane nodes and 2 worker nodes.
+- Cilium is used as the CNI.
+- kube-proxy is disabled in favor of Cilium eBPF based solution.
+- WireGuard based encryption is enabled on Cilium because the nodes communicate over public IPs.
+- GatewayAPI is used for traffic routing and it runs in HostNetwork mode to serve the external traffic directly on ports 80/443.
+- Firewall rules are configured to only allow ports 22, 80 and 443 for any external hosts, inter-host traffic is allowed and port 6443 is only allowed from administrative IPs (your IP).
+
+# Usage
+
+Initialize the repository and install dependencies.
+
+```bash
+source init.sh
+```
+
+Copy `inventory/assignment/inventory.example.ini` to `inventory/assignment/inventory.ini` and adjust the IP addresses of the nodes accordingly.
+
+Make sure to add your IP address to get remote access to kubernetes control plane.
+
+## Cluster setup
+
+First run the `init` playbook to setup firewall rules on all hosts.
+
+```bash
+ansible-playbook -i inventory/assignment/inventory.ini playbooks/init.yml
+```
+
+Deploy the cluster with kubespray.
+
+```bash
+cd kubespray
+ansible-playbook -i ../inventory/assignment/inventory.ini cluster.yml
+```
+
+## Validation Steps
+
+```bash
+kubectl get nodes
+```
+
+![kubectl get nodes](/assets/get-nodes.png)
+
+```bash
+cilium status --wait
+```
+
+![cilium status](/assets/cilium-status.png)
+
+```bash
+cilium connectivity test --test '!no-unexpected-packet-drops,!check-log-errors'
+```
+
+![cilium connectivity test](/assets/cilium-connectivity-test.png)
+
+> **_NOTE:_** `no-unexpected-packet-drops` test is skipped as the wireguard + vxlan based setup hits this [issue](https://github.com/cilium/cilium/issues/25709). This is not a permanent problem and PMTU discovery will adjust the MTU for further packets.
+
+> **_NOTE:_** `check-log-errors` test is skipped because two warnings are treated as errors. Specifically `Gateway API host networking is enabled, externalTrafficPolicy will be ignored`, but this is by design. And `level=warn msg="unable to re-allocate ingress IPv4." module=agent.controlplane.agent-infra-endpoints error="provided IP is not in the valid range. The range of valid IPs is 10.233.64.0/24"`, which is an artifact of re-installation of the cluster.
+
+## Cluster Access
+
+kubespray saves kubernetes config file with admin access at `/etc/kubernetes/admin.conf`. Copy the config file to your local machine for remote access.
+
+```bash
+scp root@$IP1:/etc/kubernetes/admin.conf ~/.kube/range.conf
+```
+
+# Testing
+
+## Internal Communication
+
+Create the client and server pods, service and network policy.
+
+```bash
+kubectl apply -f ./manifests/01-connectivity.yml
+```
+
+This creates:
+
+- 2 client pods (client and client-8080).
+- 1 server pod (http echo), that runs on ports 80 and 8080
+- 1 service connected to the server pods
+- 2 network policies, one allowing the client to reach port 80 of the server, and nother allowing the client-8080 to reach port 8080 of the server
+
+```bash
+kubectl get pods -o wide
+```
+
+![pod to pod status](/assets/pod-to-pod-status.png)
+
+Verify pod-to-pod communication
+
+```bash
+# Get the server pod IP
+S_IP=$(kubectl get pod echo -o jsonpath='{.status.podIP}')
+
+kubectl exec client -- curl -s --max-time 5 "http://$S_IP/"
+kubectl exec client -- curl -s --max-time 5 "http://$S_IP:8080/"
+```
+
+![pod to pod success](/assets/client-to-server-success.png)
+
+![pod to pod blocked](/assets/client-to-server-blocked.png)
+
+Verify pod-to-service communication
+
+```bash
+kubectl exec client -- curl -s --max-time 5 "http://echo/"
+kubectl exec client -- curl -s --max-time 5 "http://echo:8080/"
+```
+
+![pod to service success](/assets/client-to-service-success.png)
+
+![pod to service blocked](/assets/client-to-service-blocked.png)
+
+Verify pod-to-pod connectivity for port 8080
+
+```bash
+kubectl exec client-8080 -- curl -s --max-time 5 "http://echo/"
+kubectl exec client-8080 -- curl -s --max-time 5 "http://echo:8080/"
+```
+
+![pod 8080 to service blocked](/assets/client-8080-to-server-blocked.png)
+
+![pod 8080 to service success](/assets/client-8080-to-server-blocked.png)
+
+## External Communication
+

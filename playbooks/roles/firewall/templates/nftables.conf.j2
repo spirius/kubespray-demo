@@ -1,0 +1,40 @@
+#!/usr/sbin/nft -f
+
+# Replace only our table and leave Cilium's ip/ip6 tables untouched.
+add table inet host_fw
+delete table inet host_fw
+
+table inet host_fw {
+    set cluster_nodes {
+        type ipv4_addr;
+        elements = { {{ groups['all'] | map('extract', hostvars, 'ansible_host') | list | sort | join(', ') }} };
+    }
+
+    set admin_ips {
+        type ipv4_addr;
+        elements = { {{ admin_ips | sort | join(', ') }} };
+    }
+
+    chain input {
+        type filter hook input priority filter;
+        policy drop;
+
+        iif "lo" accept;
+        ct state established,related accept;
+        ct state invalid drop;
+
+        tcp dport 22 accept;
+        ip saddr @admin_ips accept;
+
+        tcp dport { 80, 443 } accept;
+
+        ip saddr @cluster_nodes accept;
+        ip protocol icmp accept;
+        ip6 nexthdr ipv6-icmp accept;
+
+        ip saddr { 10.233.0.0/18, 10.233.64.0/18 } accept;
+    }
+
+    chain forward { type filter hook forward priority filter; policy accept; }
+    chain output  { type filter hook output  priority filter; policy accept; }
+}

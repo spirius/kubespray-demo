@@ -1,0 +1,9 @@
+---
+- name: Initialize the cluster
+  hosts: all
+  gather_facts: false
+  vars:
+    admin_ips:
+      - 62.216.209.217
+  roles:
+    - firewall
