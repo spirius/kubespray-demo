@@ -1,0 +1,65 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway
+  namespace: default
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-external
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: echo-external
+  template:
+    metadata:
+      labels:
+        app: echo-external
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10.4
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-external
+  namespace: default
+spec:
+  selector:
+    app: echo-external
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: echo-external-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: echo-external
+          port: 80

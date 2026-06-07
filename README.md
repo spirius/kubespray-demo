@@ -71,6 +71,40 @@ kubespray saves kubernetes config file with admin access at `/etc/kubernetes/adm
 scp root@$IP1:/etc/kubernetes/admin.conf ~/.kube/range.conf
 ```
 
+# Cluster Maintenance
+
+The node management can be performed using kubespray functionality.
+
+More details and options can be found [here](https://github.com/kubernetes-sigs/kubespray/blob/v2.31.0/docs/operations/nodes.md).
+
+## Adding a node
+
+Add the new node in the inventory file and run:
+
+```bash
+cd kubespray
+ansible-playbook -i ../inventory/assignment/inventory.ini scale.yml
+```
+
+You can also specifically target the new node without disturbing the cluster by first running:
+
+```bash
+cd kubespray
+ansible-playbook -i ../inventory/assignment/inventory.ini facts.yml
+ansible-playbook -i ../inventory/assignment/inventory.ini scale.yml --limit=NODE_NAME
+```
+
+## Removing a node
+
+To remove a node, first run kubesprace to gracefuly remove it from the cluster:
+
+```bash
+cd kubespray
+ansible-playbook -i ../inventory/assignment/inventory.ini remove.yml -e node=NODE_NAME
+```
+
+After that remove the node from the inventory.
+
 # Testing
 
 ## Internal Communication
@@ -78,7 +112,7 @@ scp root@$IP1:/etc/kubernetes/admin.conf ~/.kube/range.conf
 Create the client and server pods, service and network policy.
 
 ```bash
-kubectl apply -f ./manifests/01-connectivity.yml
+kubectl apply -f ./manifests/01-internal-connectivity.yml
 ```
 
 This creates:
@@ -128,7 +162,24 @@ kubectl exec client-8080 -- curl -s --max-time 5 "http://echo:8080/"
 
 ![pod 8080 to service blocked](/assets/client-8080-to-server-blocked.png)
 
-![pod 8080 to service success](/assets/client-8080-to-server-blocked.png)
+![pod 8080 to service success](/assets/client-8080-to-server-success.png)
 
 ## External Communication
 
+This cluster does not have any external / cloud load balancer. The HTTP(S) server is exposed on the nodes directly. In production setup dedicated nodes should be allocated for the GatewayAPI and a DNS record pointing to those nodes should be configured, as well as cert-manager (or similar) is needed for HTTPS service.
+
+In current setup all nodes (including control plane) run GatewayAPI on host network.
+
+Deploy echo service exposed via GatewayAPI to internet on port 80:
+
+```bash
+kubectl apply -f manifests/02-external-connectivity.yml
+```
+
+Test the connectivity
+
+```bash
+curl $IP1
+```
+
+![external connection](/assets/external-connection.png)
