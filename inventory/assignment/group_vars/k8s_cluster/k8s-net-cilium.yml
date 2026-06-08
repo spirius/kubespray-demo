@@ -11,6 +11,10 @@ cilium_kube_proxy_replacement: true
 # Enable Gateway API
 cilium_gateway_api_enabled: true
 
+cilium_enable_hubble: true
+cilium_enable_hubble_metrics: true
+cilium_hubble_install: true
+
 cilium_extra_values:
   # https://docs.cilium.io/en/latest/network/servicemesh/gateway-api/gateway-api/#host-network-mode
   gatewayAPI:

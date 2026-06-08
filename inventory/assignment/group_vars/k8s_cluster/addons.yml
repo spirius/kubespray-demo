@@ -3,3 +3,5 @@
 gateway_api_enabled: true
 gateway_api_version: "1.4.1"
 gateway_api_channel: "standard"
+
+metrics_server_enabled: true

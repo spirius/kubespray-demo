@@ -12,7 +12,7 @@ table inet host_fw {
 
     set admin_ips {
         type ipv4_addr;
-        elements = { {{ admin_ips | sort | join(', ') }} };
+        elements = { {{ admin_ips }} };
     }
 
     chain input {

@@ -1,11 +1,11 @@
 # Bare-Metal Kubernetes Cluster with Cilium
 
-This repository contains the automation scripts for bootstraping a kubernetes cluster with 5 nodes using **kubespray**.
+This repository contains the automation scripts for bootstrapping a kubernetes cluster with 5 nodes using **kubespray**.
 
 ## Design Notes
 
 - This setup uses kubespray for deploying and managing the cluster.
-- It deployes 3 control plane nodes and 2 worker nodes.
+- It deploys 3 control plane nodes and 2 worker nodes.
 - Cilium is used as the CNI.
 - kube-proxy is disabled in favor of Cilium eBPF based solution.
 - WireGuard based encryption is enabled on Cilium because the nodes communicate over public IPs.
@@ -61,7 +61,30 @@ cilium connectivity test --test '!no-unexpected-packet-drops,!check-log-errors'
 
 > **_NOTE:_** `no-unexpected-packet-drops` test is skipped as the wireguard + vxlan based setup hits this [issue](https://github.com/cilium/cilium/issues/25709). This is not a permanent problem and PMTU discovery will adjust the MTU for further packets.
 
-> **_NOTE:_** `check-log-errors` test is skipped because two warnings are treated as errors. Specifically `Gateway API host networking is enabled, externalTrafficPolicy will be ignored`, but this is by design. And `level=warn msg="unable to re-allocate ingress IPv4." module=agent.controlplane.agent-infra-endpoints error="provided IP is not in the valid range. The range of valid IPs is 10.233.64.0/24"`, which is an artifact of re-installation of the cluster.
+> **_NOTE:_** `check-log-errors` test is skipped because two warnings are treated as errors. Specifically `Gateway API host networking is enabled, externalTrafficPolicy will be ignored`, but this is by design. And `level=warn msg="unable to re-allocate ingress IPv4." module=agent.controlplane.agent-infra-endpoints error="provided IP is not in the valid range. The range of valid IPs is 10.233.64.0/24"`, which is a known issue when pod CIDRs are reassigned across re-installs.
+
+Node usage can be verified by
+
+```bash
+kubectl top nodes
+```
+
+![top nodes](/assets/kubectl-top-nodes.png)
+
+## Network troubleshooting
+
+`cilium-dbg` utility can be use for troubleshooting network issues.
+
+First, identify the specific node to monitor and run `cilium-dbg monitor`
+
+```bash
+kubectl -n kube-system get pod -l k8s-app=cilium -o wide
+kubectl -n kube-system exec cilium-tmmx4 -- cilium-dbg monitor --type drop
+```
+
+![cilium-dbg-monitor](/assets/cilium-dbg-monitor.png)
+
+Use `cilium-dbg endpoint list` / `status` / `encrypt status` for analyzing cilium state.
 
 ## Cluster Access
 
@@ -75,7 +98,7 @@ scp root@$IP1:/etc/kubernetes/admin.conf ~/.kube/range.conf
 
 The node management can be performed using kubespray functionality.
 
-More details and options can be found [here](https://github.com/kubernetes-sigs/kubespray/blob/v2.31.0/docs/operations/nodes.md).
+More details and options can be found [here](https://github.com/kubernetes-sigs/kubespray/blob/v2.30.0/docs/operations/nodes.md).
 
 ## Adding a node
 
@@ -90,13 +113,13 @@ You can also specifically target the new node without disturbing the cluster by 
 
 ```bash
 cd kubespray
-ansible-playbook -i ../inventory/assignment/inventory.ini facts.yml
+ansible-playbook -i ../inventory/assignment/inventory.ini playbooks/facts.yml
 ansible-playbook -i ../inventory/assignment/inventory.ini scale.yml --limit=NODE_NAME
 ```
 
 ## Removing a node
 
-To remove a node, first run kubesprace to gracefuly remove it from the cluster:
+To remove a node, first run kubespray to gracefully remove it from the cluster:
 
 ```bash
 cd kubespray
@@ -120,7 +143,7 @@ This creates:
 - 2 client pods (client and client-8080).
 - 1 server pod (http echo), that runs on ports 80 and 8080
 - 1 service connected to the server pods
-- 2 network policies, one allowing the client to reach port 80 of the server, and nother allowing the client-8080 to reach port 8080 of the server
+- 2 network policies, one allowing the client to reach port 80 of the server, and another allowing the client-8080 to reach port 8080 of the server
 
 ```bash
 kubectl get pods -o wide
