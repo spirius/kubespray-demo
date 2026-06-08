@@ -4,13 +4,24 @@ This repository contains the automation scripts for bootstrapping a kubernetes c
 
 ## Design Notes
 
-- This setup uses kubespray for deploying and managing the cluster.
+- Kubespray chosen for vanilla upstream Kubernetes + Ansible-native, fully reproducible IaC (over hand-rolled kubeadm or an opinionated distro like Talos/k3s).
 - It deploys 3 control plane nodes and 2 worker nodes.
 - Cilium is used as the CNI.
 - kube-proxy is disabled in favor of Cilium eBPF based solution.
+- Cilium tunnel mode = VXLAN because nodes are in different subnets with no shared L2. Native/direct routing isn't possible.
 - WireGuard based encryption is enabled on Cilium because the nodes communicate over public IPs.
 - GatewayAPI is used for traffic routing and it runs in HostNetwork mode to serve the external traffic directly on ports 80/443.
 - Firewall rules are configured to only allow ports 22, 80 and 443 for any external hosts, inter-host traffic is allowed and port 6443 is only allowed from administrative IPs (your IP).
+
+## Tradeoffs and limitations
+
+- No floating control-plane VIP (no shared L2 / BGP / cloud API): kubeconfig targets one control-plane public IP; HA via SSH tunnel or local HAProxy. Internal control-plane HA still works (per-node API load-balancer).
+- No cloud LB / MetalLB / LB-IPAM (nothing to L2/BGP-announce): ingress runs host-network on node public IPs. Production: dedicate gateway nodes + DNS to them.
+- Gateway binds 80/443 on all nodes incl. control plane; production would restrict to labeled gateway nodes.
+- No TLS yet -> production needs cert-manager (or similar) for 443.
+- VXLAN + WireGuard double-encapsulation lowers pod MTU (~1370) and adds throughput overhead (the fragmentation note above is a symptom).
+- Backend pods see Envoy as the source, not the external client. Real client IP only in X-Forwarded-For. Source-CIDR filtering belongs at the firewall/gateway, not pod NetworkPolicy.
+- Standard NetworkPolicy is L3/L4 only. L7 rules and ICMP need CiliumNetworkPolicy.
 
 # Usage
 
